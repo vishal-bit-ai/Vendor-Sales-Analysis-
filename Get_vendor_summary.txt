@@ -1,0 +1,75 @@
+import pandas as pd
+import logging
+import sqlite3
+
+logging .basicConfig(
+    filename="logs/get_vendor_summary.log",
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    filemode="a"
+)
+
+(""" This function will merge different tables and get vendor_sales_summary and new columns in resultant data""")
+def create_vendor_summary(conn):
+query = """
+WITH Freightsummary AS (
+    SELECT VendorNumber, SUM(Freight) AS SumFreight
+    FROM vendor_invoice
+    GROUP BY VendorNumber
+),
+Purchasesummary AS (
+    SELECT 
+        p.Brand,
+        p.VendorNumber,
+        p.VendorName,
+        p.PurchasePrice,
+        p.Description,
+        pp.Volume,
+        pp.Price AS ActualPrice,
+        SUM(p.Quantity) AS totalpurchaseQuantity,
+        SUM(p.Dollars) AS totalpurchaseDollars
+    FROM purchases p
+    JOIN purchase_prices pp
+        ON p.Brand = pp.Brand
+    WHERE p.PurchasePrice > 0
+    GROUP BY p.Brand, p.VendorNumber, p.VendorName, p.Description, pp.Volume, pp.Price
+),
+Salessummary AS (
+    SELECT 
+        VendorNo,
+        Brand,
+        VendorName,
+        SUM(SalesQuantity) AS totalsalesquantity,
+        SUM(SalesDollars) AS totalsalesdollars,
+        SUM(SalesPrice) AS totalsalesprice,
+        SUM(ExciseTax) AS totalsalesExciseTax
+    FROM sales
+    GROUP BY VendorNo, Brand
+)
+SELECT
+    ps.VendorNumber,
+    ps.VendorName,
+    ps.Brand,
+    ps.PurchasePrice,
+    ps.Description,
+    ps.ActualPrice,
+    ps.Volume,
+    ps.totalpurchaseQuantity,
+    ps.totalpurchaseDollars,
+    ss.totalsalesquantity,
+    ss.totalsalesdollars,
+    ss.totalsalesprice,
+    ss.totalsalesExciseTax,
+    fs.SumFreight
+FROM Purchasesummary ps
+LEFT JOIN Salessummary ss
+    ON ps.VendorNumber = ss.VendorNo
+    AND ps.Brand = ss.Brand
+LEFT JOIN Freightsummary fs
+    ON ps.VendorNumber = fs.VendorNumber
+ORDER BY ps.totalpurchaseDollars DESC
+"""
+vendor_sales_summary = pd.read_sql_query(query, conn)
+
+return vendor_sales_summary
+
